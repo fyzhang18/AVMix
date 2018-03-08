@@ -1,0 +1,412 @@
+---
+title: "PreProcessing"
+author: "Felicia Zhang"
+date: "Oct 16, 2017"
+output: html_document
+---
+
+```{r}
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+
+#1. Read in data
+setwd("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mixed/Data/V2/") #folder before your data folder
+
+data_import = function(path_name){
+  list.files(path = path_name,full.names = T) -> file_list
+  data_import = c()
+  for (x in file_list) { 
+    indiv_import <- read.csv(x, header = TRUE)
+    rbind(data_import,indiv_import) -> data_import
+    print(x)
+  }
+  return(data_import)
+}
+
+raw.data <- data_import("./Data") #folder where your csv files are
+poo <- raw.data
+#raw.data <- read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mixed/Data/V2/AV_Mixed_preprocessed_Oct16.csv")  
+```
+
+```{r}
+#1. Class conversions
+poo$RIGHT_PUPIL_SIZE <- as.numeric(as.character(poo$RIGHT_PUPIL_SIZE))
+poo$RIGHT_GAZE_X <- as.numeric(as.character(poo$RIGHT_GAZE_X))
+poo$RIGHT_GAZE_Y <- as.numeric(as.character(poo$RIGHT_GAZE_Y))
+
+#the warnings appear bc of converting . to NA, which is correct
+length(which(raw.data$RIGHT_PUPIL_SIZE=="."))
+length(which(is.na(poo$RIGHT_PUPIL_SIZE)))
+
+#2. Assigning each subject a number for subID so it's easier to index 
+poo$subID <- 0
+subs <- unique(poo$RECORDING_SESSION_LABEL)
+for (i in 1:length(subs)){
+poo$subID[poo$RECORDING_SESSION_LABEL == subs[i]] <- i  
+}
+unique(poo$subID)
+
+#3. Standardize time 
+subs <- unique(poo$subID)
+for (j in 39:length(subs)) {
+  trials <- unique(poo$TRIAL_INDEX[poo$subID==j])
+  print(j)
+for (i in 1:length(trials)) {
+  times = poo$TIMESTAMP[poo$subID == subs[j] & poo$TRIAL_INDEX == trials[i]] #gets the timestamp for a trial for a subject
+  start = min(times) #finds the smallest timestamp
+  poo$TIMECODE[poo$subID == subs[j] & poo$TRIAL_INDEX == trials[i]] = poo$TIMESTAMP[poo$subID == subs[j] & poo$TRIAL_INDEX == trials[i]] - start
+}}
+
+#4. Check hertz recorded at 
+for (i in 1:length(unique(poo$subID))) {
+blah <- subset(poo, subID == i)
+print(i)
+print(head(blah$TIMECODE))
+}
+
+#subID 50 is bad
+poo <- subset(poo, subID < 50)
+
+#5. Convert pupil area to diameter for certain participants 
+# diameter = 256 * sqrt(area / Pi)
+diameter <- function (x) {
+  256*sqrt(x/pi)
+}
+
+subs <- unique(poo$subID)
+for (i in 1:length(subs)){
+summary(poo$RIGHT_PUPIL_SIZE[poo$subID==subs[i]])
+a <- summary(poo$RIGHT_PUPIL_SIZE[poo$subID==subs[i]])
+if (a[4] < 1000){ #meaning it's recorded in area
+  start <- min(which(poo$subID==subs[i])) #find start of that participant
+  end <- max(which(poo$subID==subs[i])) #find end of that participant
+  poo$RIGHT_PUPIL_SIZE[start:end] <- sapply(poo$RIGHT_PUPIL_SIZE[start:end],diameter) 
+}}
+
+summary(poo$RIGHT_PUPIL_SIZE)
+```
+
+Interpolating
+```{r}
+#Fill in blinks
+#blinks were identified using Eyelink
+#The duration of a blink is on average 100-150 milliseconds according to UCL researcher (conservative)
+#between 100-400ms according to the Harvard Database of Useful Biological Numbers (liberal)
+
+poo <- data.table(poo) #converts data.frame to data.table, faster to manipulate with large data
+poo <- poo[, orig := .I] #creates column called 'orig' with row index
+  
+yoo <- data.frame(RECORDING_SESSION_LABEL= character(), HTARGET_X= numeric(),HTARGET_Y= numeric(),LEFT_GAZE_X= numeric(),LEFT_GAZE_Y= numeric(),LEFT_IN_BLINK= numeric(),LEFT_PUPIL_SIZE= numeric(),RIGHT_GAZE_X= numeric(),RIGHT_GAZE_Y= numeric(),RIGHT_IN_BLINK= numeric(),RIGHT_PUPIL_SIZE= numeric(),SAMPLE_INDEX= numeric(),SAMPLE_MESSAGE= character(),TIMESTAMP= numeric(),TRIAL_INDEX= numeric(),trialtype= numeric(),subID= numeric(),TIMECODE= numeric(),orig= numeric(),rleLength= numeric())
+
+for (i in 1:length(subs)) { #for each subject
+  poo2 <- subset(poo, subID==i)
+  poo2 <- poo2[, rleLength := {rr <- rle(is.na(poo2$RIGHT_PUPIL_SIZE)); rep(rr$length, rr$length)}]
+  #create column rleLength that counts consecutive filled or NA values (figure out how long NA values are)
+  yoo <- rbind(yoo,poo2)
+  print(i)
+}
+
+poo <- yoo
+
+#Only fill in NA gaps with length < 200 (200 samples = 400ms) going liberal
+poo$RIGHT_PUPIL_SIZE <- with(poo, ifelse(rleLength < 200, na.approx(RIGHT_PUPIL_SIZE), RIGHT_PUPIL_SIZE))
+summary(poo$RIGHT_PUPIL_SIZE) #hopefully very little NA's
+```
+
+Outliers
+```{r}
+#plot raw pupil, just visualizing the data first
+boo1 <- ddply(poo2,.(subID,trialtype,TIMECODE),summarise,pupilsize=mean(RIGHT_PUPIL_SIZE,na.rm = TRUE)) #collapse across trials
+boo2 <- ddply(boo1,.(trialtype,TIMECODE),summarise,PUPIL=mean(pupilsize,na.rm = TRUE),sePupil=sd(pupilsize, na.rm = TRUE)/sqrt(length(pupilsize))) #collapse across subs
+boo2$preprocessing <- 0
+a = c(1000,2000)
+
+ggplot(boo2,aes(x=TIMECODE,y=PUPIL,color=factor(trialtype),fill=factor(trialtype)))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  ggtitle("Timecourse: Raw Pupil Size (No Preprocessing)")+
+  labs(x = "Time", y = "Pupil change (%)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  geom_ribbon(aes(ymin=PUPIL-sePupil,ymax=PUPIL+sePupil),alpha=0.4)+
+  geom_vline(xintercept = a, linetype = "longdash")+
+  scale_x_continuous(limits=c(0,4000),breaks=seq(0,4000,500), expand = c(0, 0))+
+  scale_y_continuous(limits=c(2000,4000),breaks=seq(2000,4000,500))+
+  scale_fill_discrete(name="Trial Type",breaks=c("1", "2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))+guides(color=FALSE)
+
+#1. Remove trials: more than 50% were bad
+subs <- unique(poo2$subID)
+poo2$percentmissing <- 999
+
+for (j in 26:length(subs)) {
+  trials <- unique(poo2$TRIAL_INDEX[poo2$subID==subs[j]])
+  print(j)
+for (i in 1:length(trials)) {
+  p.missing <- length(which(is.na(poo2$RIGHT_PUPIL_SIZE[poo2$TRIAL_INDEX==trials[i] & poo2$subID==subs[j]])))/length(poo2$RIGHT_PUPIL_SIZE[poo2$TRIAL_INDEX==trials[i] & poo2$subID==subs[j]])*100
+  b <- min(which(poo2$TRIAL_INDEX==trials[i] & poo2$subID==subs[j]))
+  bb <- max(which(poo2$TRIAL_INDEX==trials[i] & poo2$subID==subs[j]))
+  poo2$percentmissing[b:bb] <- p.missing
+}}
+
+#2. Remove subjects: more than 25% of data were bad
+subs <- unique(poo2$subID)
+poo2$percentmissing.sub <- 999
+for (j in 1:length(subs)) {
+  p.missing <- length(which(is.na(poo2$RIGHT_PUPIL_SIZE[poo2$subID==subs[j]])))/length(poo2$RIGHT_PUPIL_SIZE[poo2$subID==subs[j]])*100
+  b <- min(which(poo2$subID==subs[j]))
+  bb <- max(which(poo2$subID==subs[j]))
+  poo2$percentmissing.sub[b:bb] <- p.missing
+  print(j)
+}
+
+write.csv(poo2, "AVMix_preprocessed_outliersnotremoved.csv", row.names=TRUE)
+
+```
+
+Add in times seen (for AV Mix only)
+```{r}
+poo =  read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mixed/Data/V2/AVMix_preprocessed_outliersnotremoved.csv")
+poo$X <- NULL
+
+poo$timesseen <- 99
+for (i in 1:15) { 
+  if (i==1) {
+  poo$timesseen[poo$TRIAL_INDEX < 9*i+1] <- i
+  } else
+  poo$timesseen[poo$TRIAL_INDEX < 9*i+1 & poo$TRIAL_INDEX > 9*(i-1)] <- i
+}
+
+doo <- ddply(poo,.(subID,TRIAL_INDEX,trialtype,timesseen),summarise,avg.pupilSs=mean(RIGHT_PUPIL_SIZE,na.rm = TRUE)) 
+
+#add in timesseen for trialtype 1
+subs <- unique(poo$subID)
+
+for (j in 1:length(subs)){
+trials <- unique(poo$TRIAL_INDEX[poo$subID==subs[j]])
+moo <- subset(poo, trialtype==1 & subID==subs[j])
+d <- unique(moo$TRIAL_INDEX)
+
+poo$timesseen[poo$TRIAL_INDEX==d[2] & poo$subID==subs[j]] <- 2
+poo$timesseen[poo$TRIAL_INDEX==d[3] & poo$subID==subs[j]] <- 3
+poo$timesseen[poo$TRIAL_INDEX==d[4] & poo$subID==subs[j]] <- 4
+poo$timesseen[poo$TRIAL_INDEX==d[5] & poo$subID==subs[j]] <- 5
+poo$timesseen[poo$TRIAL_INDEX==d[6] & poo$subID==subs[j]] <- 6
+poo$timesseen[poo$TRIAL_INDEX==d[7] & poo$subID==subs[j]] <- 7
+poo$timesseen[poo$TRIAL_INDEX==d[8] & poo$subID==subs[j]] <- 8
+poo$timesseen[poo$TRIAL_INDEX==d[9] & poo$subID==subs[j]] <- 9
+poo$timesseen[poo$TRIAL_INDEX==d[10] & poo$subID==subs[j]] <- 10
+poo$timesseen[poo$TRIAL_INDEX==d[11] & poo$subID==subs[j]] <- 11
+poo$timesseen[poo$TRIAL_INDEX==d[12] & poo$subID==subs[j]] <- 12
+poo$timesseen[poo$TRIAL_INDEX==d[13] & poo$subID==subs[j]] <- 13
+poo$timesseen[poo$TRIAL_INDEX==d[14] & poo$subID==subs[j]] <- 14
+poo$timesseen[poo$TRIAL_INDEX==d[15] & poo$subID==subs[j]] <- 15
+poo$timesseen[poo$TRIAL_INDEX==d[16] & poo$subID==subs[j]] <- 16
+poo$timesseen[poo$TRIAL_INDEX==d[17] & poo$subID==subs[j]] <- 17
+poo$timesseen[poo$TRIAL_INDEX==d[18] & poo$subID==subs[j]] <- 18
+poo$timesseen[poo$TRIAL_INDEX==d[19] & poo$subID==subs[j]] <- 19
+poo$timesseen[poo$TRIAL_INDEX==d[20] & poo$subID==subs[j]] <- 20
+poo$timesseen[poo$TRIAL_INDEX==d[21] & poo$subID==subs[j]] <- 21
+poo$timesseen[poo$TRIAL_INDEX==d[22] & poo$subID==subs[j]] <- 22
+poo$timesseen[poo$TRIAL_INDEX==d[23] & poo$subID==subs[j]] <- 23
+poo$timesseen[poo$TRIAL_INDEX==d[24] & poo$subID==subs[j]] <- 24
+poo$timesseen[poo$TRIAL_INDEX==d[25] & poo$subID==subs[j]] <- 25
+poo$timesseen[poo$TRIAL_INDEX==d[26] & poo$subID==subs[j]] <- 26
+poo$timesseen[poo$TRIAL_INDEX==d[27] & poo$subID==subs[j]] <- 27
+poo$timesseen[poo$TRIAL_INDEX==d[28] & poo$subID==subs[j]] <- 28
+poo$timesseen[poo$TRIAL_INDEX==d[29] & poo$subID==subs[j]] <- 29
+poo$timesseen[poo$TRIAL_INDEX==d[30] & poo$subID==subs[j]] <- 30
+print(j)
+}
+
+#add in timesseen for trialtype 5
+subs <- unique(poo$subID)
+
+for (j in 1:length(subs)){
+trials <- unique(poo$TRIAL_INDEX[poo$subID==subs[j]])
+moo <- subset(poo, trialtype==5 & subID==subs[j])
+d <- unique(moo$TRIAL_INDEX)
+
+poo$timesseen[poo$TRIAL_INDEX==d[2] & poo$subID==subs[j]] <- 2
+poo$timesseen[poo$TRIAL_INDEX==d[3] & poo$subID==subs[j]] <- 3
+poo$timesseen[poo$TRIAL_INDEX==d[4] & poo$subID==subs[j]] <- 4
+poo$timesseen[poo$TRIAL_INDEX==d[5] & poo$subID==subs[j]] <- 5
+poo$timesseen[poo$TRIAL_INDEX==d[6] & poo$subID==subs[j]] <- 6
+poo$timesseen[poo$TRIAL_INDEX==d[7] & poo$subID==subs[j]] <- 7
+poo$timesseen[poo$TRIAL_INDEX==d[8] & poo$subID==subs[j]] <- 8
+poo$timesseen[poo$TRIAL_INDEX==d[9] & poo$subID==subs[j]] <- 9
+poo$timesseen[poo$TRIAL_INDEX==d[10] & poo$subID==subs[j]] <- 10
+poo$timesseen[poo$TRIAL_INDEX==d[11] & poo$subID==subs[j]] <- 11
+poo$timesseen[poo$TRIAL_INDEX==d[12] & poo$subID==subs[j]] <- 12
+poo$timesseen[poo$TRIAL_INDEX==d[13] & poo$subID==subs[j]] <- 13
+poo$timesseen[poo$TRIAL_INDEX==d[14] & poo$subID==subs[j]] <- 14
+poo$timesseen[poo$TRIAL_INDEX==d[15] & poo$subID==subs[j]] <- 15
+poo$timesseen[poo$TRIAL_INDEX==d[16] & poo$subID==subs[j]] <- 16
+poo$timesseen[poo$TRIAL_INDEX==d[17] & poo$subID==subs[j]] <- 17
+poo$timesseen[poo$TRIAL_INDEX==d[18] & poo$subID==subs[j]] <- 18
+poo$timesseen[poo$TRIAL_INDEX==d[19] & poo$subID==subs[j]] <- 19
+poo$timesseen[poo$TRIAL_INDEX==d[20] & poo$subID==subs[j]] <- 20
+poo$timesseen[poo$TRIAL_INDEX==d[21] & poo$subID==subs[j]] <- 21
+poo$timesseen[poo$TRIAL_INDEX==d[22] & poo$subID==subs[j]] <- 22
+poo$timesseen[poo$TRIAL_INDEX==d[23] & poo$subID==subs[j]] <- 23
+poo$timesseen[poo$TRIAL_INDEX==d[24] & poo$subID==subs[j]] <- 24
+poo$timesseen[poo$TRIAL_INDEX==d[25] & poo$subID==subs[j]] <- 25
+poo$timesseen[poo$TRIAL_INDEX==d[26] & poo$subID==subs[j]] <- 26
+poo$timesseen[poo$TRIAL_INDEX==d[27] & poo$subID==subs[j]] <- 27
+poo$timesseen[poo$TRIAL_INDEX==d[28] & poo$subID==subs[j]] <- 28
+poo$timesseen[poo$TRIAL_INDEX==d[29] & poo$subID==subs[j]] <- 29
+poo$timesseen[poo$TRIAL_INDEX==d[30] & poo$subID==subs[j]] <- 30
+print(j)
+}
+
+#add in timesseen for trialtype 6
+subs <- unique(poo$subID)
+
+for (j in 1:length(subs)){
+trials <- unique(poo$TRIAL_INDEX[poo$subID==subs[j]])
+moo <- subset(poo, trialtype==6 & subID==subs[j])
+d <- unique(moo$TRIAL_INDEX)
+
+poo$timesseen[poo$TRIAL_INDEX==d[2] & poo$subID==subs[j]] <- 2
+poo$timesseen[poo$TRIAL_INDEX==d[3] & poo$subID==subs[j]] <- 3
+poo$timesseen[poo$TRIAL_INDEX==d[4] & poo$subID==subs[j]] <- 4
+poo$timesseen[poo$TRIAL_INDEX==d[5] & poo$subID==subs[j]] <- 5
+poo$timesseen[poo$TRIAL_INDEX==d[6] & poo$subID==subs[j]] <- 6
+poo$timesseen[poo$TRIAL_INDEX==d[7] & poo$subID==subs[j]] <- 7
+poo$timesseen[poo$TRIAL_INDEX==d[8] & poo$subID==subs[j]] <- 8
+poo$timesseen[poo$TRIAL_INDEX==d[9] & poo$subID==subs[j]] <- 9
+poo$timesseen[poo$TRIAL_INDEX==d[10] & poo$subID==subs[j]] <- 10
+poo$timesseen[poo$TRIAL_INDEX==d[11] & poo$subID==subs[j]] <- 11
+poo$timesseen[poo$TRIAL_INDEX==d[12] & poo$subID==subs[j]] <- 12
+poo$timesseen[poo$TRIAL_INDEX==d[13] & poo$subID==subs[j]] <- 13
+poo$timesseen[poo$TRIAL_INDEX==d[14] & poo$subID==subs[j]] <- 14
+poo$timesseen[poo$TRIAL_INDEX==d[15] & poo$subID==subs[j]] <- 15
+poo$timesseen[poo$TRIAL_INDEX==d[16] & poo$subID==subs[j]] <- 16
+poo$timesseen[poo$TRIAL_INDEX==d[17] & poo$subID==subs[j]] <- 17
+poo$timesseen[poo$TRIAL_INDEX==d[18] & poo$subID==subs[j]] <- 18
+poo$timesseen[poo$TRIAL_INDEX==d[19] & poo$subID==subs[j]] <- 19
+poo$timesseen[poo$TRIAL_INDEX==d[20] & poo$subID==subs[j]] <- 20
+poo$timesseen[poo$TRIAL_INDEX==d[21] & poo$subID==subs[j]] <- 21
+poo$timesseen[poo$TRIAL_INDEX==d[22] & poo$subID==subs[j]] <- 22
+poo$timesseen[poo$TRIAL_INDEX==d[23] & poo$subID==subs[j]] <- 23
+poo$timesseen[poo$TRIAL_INDEX==d[24] & poo$subID==subs[j]] <- 24
+poo$timesseen[poo$TRIAL_INDEX==d[25] & poo$subID==subs[j]] <- 25
+poo$timesseen[poo$TRIAL_INDEX==d[26] & poo$subID==subs[j]] <- 26
+poo$timesseen[poo$TRIAL_INDEX==d[27] & poo$subID==subs[j]] <- 27
+poo$timesseen[poo$TRIAL_INDEX==d[28] & poo$subID==subs[j]] <- 28
+poo$timesseen[poo$TRIAL_INDEX==d[29] & poo$subID==subs[j]] <- 29
+poo$timesseen[poo$TRIAL_INDEX==d[30] & poo$subID==subs[j]] <- 30
+print(j)
+}
+
+doo <- ddply(poo,.(subID,TRIAL_INDEX,trialtype,timesseen),summarise,avg.pupilSs=mean(RIGHT_PUPIL_SIZE,na.rm = TRUE)) 
+
+write.csv(poo, "AVMix_preprocessed_outliersnotremoved.csv", row.names=TRUE)
+```
+
+Removing outliers at the end
+```{r}
+poo3 <- subset(poo, percentmissing < 50) #keep trials with less than 50% bad
+poo4 <- subset(poo3, percentmissing.sub < 25)  #keep subjects with less than 25% bads
+
+write.csv(poo4, "AVMix_preprocessed_outliersremoved.csv", row.names=TRUE)
+
+########################
+poo5 <- subset(poo2, percentmissing < 50)
+
+#is there a difference?
+subs <- unique(poo5$subID)
+poo5$percentmissing.sub <- 999
+for (j in 1:length(subs)) {
+  p.missing <- length(which(is.na(poo5$RIGHT_PUPIL_SIZE[poo5$subID==subs[j]])))/length(poo5$RIGHT_PUPIL_SIZE[poo5$subID==subs[j]])*100
+  b <- min(which(poo5$subID==subs[j]))
+  bb <- max(which(poo5$subID==subs[j]))
+  poo5$percentmissing.sub[b:bb] <- p.missing
+  print(j)
+}
+
+poo6 <- subset(poo5, percentmissing.sub < 25)
+
+#compare poo4 and poo6
+#we are more conservative with option 1 than option 2
+```
+
+Calculate pupil change from baseline
+```{r}
+poo =  read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mixed/Data/V2/AVMix_preprocessed_outliersremoved.csv")
+poo$X <- NULL
+
+#7. Standardize pupil size (percentage change from baseline) 
+poo$SAMPLE_MESSAGE <- as.character(poo$SAMPLE_MESSAGE)
+pooC <- poo
+
+#relabel baseline of trial 1 as trial 0
+subs <- unique(pooC$subID)
+for (j in 1:length(subs)) {
+  
+  trials <- unique(pooC$TRIAL_INDEX[pooC$subID==subs[j]])
+  y <- min(which(pooC$subID==subs[j]))
+  yy <- which(pooC$SAMPLE_MESSAGE[pooC$subID==subs[j]]=="BASELINE1_END")
+  if (length(yy) > 0) {
+  yyy <- y+yy-1
+  pooC$TRIAL_INDEX[y:yyy] <- 0
+  }
+  if (length(yy)==0) {
+  yy2 <- which(pooC$SAMPLE_MESSAGE[pooC$subID==subs[j]]=="BASELINE1_END;SOUND")
+    if (length(yy2) > 0) {
+    yyy <- y+yy2-1
+    pooC$TRIAL_INDEX[y:yyy] <- 0
+    } else if (length(yy2)==0) {
+    yy3 <- which(pooC$SAMPLE_MESSAGE[pooC$subID==subs[j]]=="BASELINE1_END;NO_SOUND")
+    yyy <- y+yy3-1
+    pooC$TRIAL_INDEX[y:yyy] <- 0
+    }}
+print(j)
+}
+
+subs <- unique(pooC$subID)
+
+for (j in 4:length(subs)) {
+  trials <- unique(pooC$TRIAL_INDEX[pooC$subID==subs[j]])
+  print(j)
+for (i in 2:length(trials)) { #start from trial index 1
+  if (i == 2) { #meaning first trial
+  end <- max(which(pooC$TRIAL_INDEX==0 & pooC$subID == subs[j]))
+  start <- end-249
+  baseline <- pooC$RIGHT_PUPIL_SIZE[start:end] #gets all the pupil size during that period
+  baselineavg <- mean(baseline, na.rm = TRUE) #baseline avg
+  pooC$PUPIL_CORRECTED[pooC$TRIAL_INDEX == trials[i] & pooC$subID == subs[j]] <- (pooC$RIGHT_PUPIL_SIZE[pooC$TRIAL_INDEX == trials[i] &pooC$subID == subs[j]] - baselineavg) / baselineavg  
+  } else {
+  ii = i - 1 #previous trial
+  #use last 500ms of previous trial
+  end <- max(which(pooC$subID==subs[j] & pooC$TRIAL_INDEX==trials[ii]))
+  start <- end-249 
+  baseline <- pooC$RIGHT_PUPIL_SIZE[start:end] #gets all the pupil size during that period
+  baselineavg <- mean(baseline, na.rm = TRUE) #baseline avg
+  pooC$PUPIL_CORRECTED[pooC$TRIAL_INDEX == trials[i] & pooC$subID == subs[j]] <- (pooC$RIGHT_PUPIL_SIZE[pooC$TRIAL_INDEX == trials[i] & pooC$subID == subs[j]] - baselineavg) / baselineavg
+}}}
+
+#trialtype (1=A1V1, 2=A2V2, 3=A2--, 4=--V2, 5=A3--, 6=--V3)
+
+#remove trial_index0
+poo2 <- subset(pooC, TRIAL_INDEX > 0)
+
+#fix time for trial 1
+subs <- unique(pooC$subID)
+for (j in 1:length(subs)) {
+  start = min(pooC$TIMESTAMP[pooC$subID == subs[j] & pooC$TRIAL_INDEX == 1]) #finds the smallest timestamp
+  pooC$TIMECODE[pooC$subID == subs[j] & pooC$TRIAL_INDEX == 1] <- pooC$TIMESTAMP[pooC$subID == subs[j] & pooC$TRIAL_INDEX == 1] - start
+  print(j)
+}
+
+write.csv(pooC, "AVMix_final.csv", row.names=TRUE) #save to computer
+```

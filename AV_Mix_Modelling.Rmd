@@ -1,0 +1,1313 @@
+---
+title: "Results_Final"
+author: "Felicia Zhang"
+date: "10/18/2016"
+output: html_document
+---
+
+1. Prepare Data to be fed into MATLAB
+```{r}
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(RColorBrewer)
+library(lmerTest)
+library(boot)
+
+#load data
+# orig = read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Data/V2/AVMix_final.csv")  
+# orig <- subset(orig, TRIAL_INDEX > 0) #get rid of trial 0 (that's baseline for trial 1) 
+# orig$X <- NULL
+# 
+# poo2 <- orig
+# a <- which(poo2$RIGHT_GAZE_X < 440)
+# poo2 <- poo2[-c(a), ]
+# a <- which(poo2$RIGHT_GAZE_Y < 312)
+# poo2 <- poo2[-c(a), ]
+# a <- which(poo2$RIGHT_GAZE_X > 840)
+# poo2 <- poo2[-c(a), ]
+# a <- which(poo2$RIGHT_GAZE_Y > 712)
+# poo2 <- poo2[-c(a), ]
+# 
+# saveRDS(poo2, "AVMix.rds")
+orig = readRDS("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Data/V2/AVMix.rds")
+poo2 = orig
+```
+
+create DF with: RECORDING_SESSION_LABEL	TRIAL_INDEX	TrialType	meanPUPIL TrialPresent
+```{r}
+#meanPUPIL: 2000-6000ms
+poo3 <- subset(poo2, TIMECODE > 1999 & TIMECODE <6001)
+
+doo2 <- ddply(poo3,.(RECORDING_SESSION_LABEL,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(RIGHT_PUPIL_SIZE,na.rm = TRUE)) 
+
+doo2$TrialPresent <- 1
+doo2$TrialPresent[doo2$trialtype==1] <- 1
+doo2$TrialPresent[doo2$trialtype==2] <- 1
+doo2$TrialPresent[doo2$trialtype==3] <- 0
+doo2$TrialPresent[doo2$trialtype==4] <- 0
+doo2$TrialPresent[doo2$trialtype==5] <- 0
+doo2$TrialPresent[doo2$trialtype==6] <- 0
+
+doo <- ddply(poo3,.(RECORDING_SESSION_LABEL,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE)) 
+doo$TrialPresent <- 1
+
+#relabel trial type
+#trialtype (1=A1V1, 2=A2V2, 3=A2--, 4=--V2, 5=A3--, 6=--V3)
+#trialtype 1==1 (100% predictive)
+#trialtype 2,3,4 == 2 (33% predictive)
+#trialtype 5,6==3 (0% predictive)
+doo$TrialPresent[doo$trialtype==1] <- 1
+doo$TrialPresent[doo$trialtype==2] <- 1
+doo$TrialPresent[doo$trialtype==3] <- 0
+doo$TrialPresent[doo$trialtype==4] <- 0
+doo$TrialPresent[doo$trialtype==5] <- 0
+doo$TrialPresent[doo$trialtype==6] <- 0
+unique(doo$TrialPresent)
+
+write.csv(doo, "Model_AllTrialTypes_Pupil2000-6000.csv", row.names=TRUE) 
+
+##### MEANPUPIL 1000-2000ms
+poo3 <- subset(poo2, TIMECODE > 999 & TIMECODE <2001)
+
+doo2 <- ddply(poo3,.(RECORDING_SESSION_LABEL,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(RIGHT_PUPIL_SIZE,na.rm = TRUE)) 
+
+doo2$TrialPresent <- 1
+doo2$TrialPresent[doo2$trialtype==1] <- 1
+doo2$TrialPresent[doo2$trialtype==2] <- 1
+doo2$TrialPresent[doo2$trialtype==3] <- 0
+doo2$TrialPresent[doo2$trialtype==4] <- 0
+doo2$TrialPresent[doo2$trialtype==5] <- 0
+doo2$TrialPresent[doo2$trialtype==6] <- 0
+
+doo <- ddply(poo3,.(RECORDING_SESSION_LABEL,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE)) 
+doo$TrialPresent <- 1
+
+#relabel trial type
+#trialtype (1=A1V1, 2=A2V2, 3=A2--, 4=--V2, 5=A3--, 6=--V3)
+#trialtype 1==1 (100% predictive)
+#trialtype 2,3,4 == 2 (33% predictive)
+#trialtype 5,6==3 (0% predictive)
+doo$TrialPresent[doo$trialtype==1] <- 1
+doo$TrialPresent[doo$trialtype==2] <- 1
+doo$TrialPresent[doo$trialtype==3] <- 0
+doo$TrialPresent[doo$trialtype==4] <- 0
+doo$TrialPresent[doo$trialtype==5] <- 0
+doo$TrialPresent[doo$trialtype==6] <- 0
+unique(doo$TrialPresent)
+
+write.csv(doo, "Model_AllTrialTypes_Pupil1000-2000.csv", row.names=TRUE) 
+
+
+##### MEANPUPIL 1000-3000ms (Just like OPD)
+poo3 <- subset(poo2, TIMECODE > 999 & TIMECODE <3001)
+
+doo2 <- ddply(poo3,.(RECORDING_SESSION_LABEL,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(RIGHT_PUPIL_SIZE,na.rm = TRUE)) 
+
+doo2$TrialPresent <- 1
+doo2$TrialPresent[doo2$trialtype==1] <- 1
+doo2$TrialPresent[doo2$trialtype==2] <- 1
+doo2$TrialPresent[doo2$trialtype==3] <- 0
+doo2$TrialPresent[doo2$trialtype==4] <- 0
+doo2$TrialPresent[doo2$trialtype==5] <- 0
+doo2$TrialPresent[doo2$trialtype==6] <- 0
+
+doo <- ddply(poo3,.(RECORDING_SESSION_LABEL,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE)) 
+doo$TrialPresent <- 1
+
+#relabel trial type
+#trialtype (1=A1V1, 2=A2V2, 3=A2--, 4=--V2, 5=A3--, 6=--V3)
+#trialtype 1==1 (100% predictive)
+#trialtype 2,3,4 == 2 (33% predictive)
+#trialtype 5,6==3 (0% predictive)
+doo$TrialPresent[doo$trialtype==1] <- 1
+doo$TrialPresent[doo$trialtype==2] <- 1
+doo$TrialPresent[doo$trialtype==3] <- 0
+doo$TrialPresent[doo$trialtype==4] <- 0
+doo$TrialPresent[doo$trialtype==5] <- 0
+doo$TrialPresent[doo$trialtype==6] <- 0
+unique(doo$TrialPresent)
+
+write.csv(doo, "Model_AllTrialTypes_Pupil1000-3000.csv", row.names=TRUE) 
+```
+
+Modelling 1
+Pupil size = 2000-6000ms
+Combining trial types
+a.	P0=[0,0.25,0.5,0.75,1]
+b.	P0=0.5
+c.	P0=1
+
+Modelling 2
+Pupil size = 2000-6000ms
+Separating trial types
+a.	P0=[0,0.25,0.5,0.75,1]
+b.	P0=0.5
+c.	P0=1
+
+Modelling 3
+Pupil size = 1000-2000ms
+Combining trial types
+a.	P0=[0,0.25,0.5,0.75,1]
+b.	P0=0.5
+c.	P0=1
+
+Modelling 4
+Pupil size = 1000-2000ms
+Separating trial types
+a.	P0=[0,0.25,0.5,0.75,1]
+b.	P0=0.5
+c.	P0=1
+
+FREE PARAMS
+```{r}
+#VERSION 1
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version1/freeparams.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (2000-6000), combined trialtypes")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (2000-6000), combined trialtypes")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 2: trialtype 1
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version2/freeparams_trialtype1.csv")
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (2000-6000), trial type 1")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (2000-6000), trial type 1")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 2: trialtype 2
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version2/freeparams_trialtype2.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (2000-6000), trial type 2")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (2000-6000), trial type 2")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 2: trialtype 3
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version2/freeparams_trialtype3.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (2000-6000), trial type 3")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (2000-6000), trial type 3")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 3 1000-2000
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version3/freeparams.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000), combined trialtypes")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000), combined trialtypes")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 4: trialtype 1
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version4/freeparams_trialtype1.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000), trial type 1")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000), trial type 1")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 4: trialtype 2
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version4/freeparams_trialtype2.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000), trial type 2")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000), trial type 2")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 4: trialtype 3
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version4/freeparams_trialtype3.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000), trial type 3")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000), trial type 3")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+
+#VERSION 5 1000-3000
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version5/freeparams.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000), combined trialtypes")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(  x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000), combined trialtypes")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 6: trialtype 1
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version6/freeparams_trialtype1.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000), trial type 1")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000), trial type 1")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 6: trialtype 2
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version6/freeparams_trialtype2.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000), trial type 2")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000), trial type 2")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 6: trialtype 3
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version6/freeparams_trialtype3.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+
+#bar graph P0
+goo <- ddply(foo,.(version),summarise,meanP0=mean(P0,na.rm = TRUE),seP0=sd(P0, na.rm = TRUE)/sqrt(length(P0)))
+limits <- aes(ymax = meanP0 + seP0, ymin=meanP0 - seP0)
+
+ggplot(goo, aes(x=factor(version), y=meanP0, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000), trial type 3")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="P0",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits, width=0.25,color="black")
+
+#bar graph alpha
+goo2 <- ddply(foo,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000), trial type 3")+
+  scale_x_discrete(breaks=c("1", "2","3"),labels=c("all P0", "P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+```
+
+TRAJECTORY
+```{r}
+#VERSION 1 
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version1/trajectory.csv")
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (2000-6000), combined trialtypes")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (2000-6000), combined trialtypes")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))+
+  geom_hline(yintercept=0.33, color='coral', size=2,alpha=0.5)
+
+#VERSION 2: trial type 1
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version2/trajectory_trialtype1.csv")
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:30),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (2000-6000), trial type 1")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,2))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (2000-6000), trial type 1")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,2))+
+  geom_hline(yintercept=1, color='coral', size=2,alpha=0.5)
+
+#VERSION 2: trial type 2
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version2/trajectory_trialtype2.csv")
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:45),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (2000-6000), trial type 2")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,45),breaks=seq(0,45,5))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (2000-6000), trial type 2")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,45),breaks=seq(0,45,5))+
+  geom_hline(yintercept=0.33, color='coral', size=2,alpha=0.5)
+
+#VERSION 2: trial type 3
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version2/trajectory_trialtype3.csv")
+class(Traj.v1$delta.square)
+Traj.v1$delta.square <- as.numeric(as.character(Traj.v1$delta.square))
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:60),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (2000-6000), trial type 3")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,60),breaks=seq(0,60,5))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (2000-6000), trial type 3")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,60),breaks=seq(0,60,5))+
+  geom_hline(yintercept=0, color='coral', size=2,alpha=0.5)
+
+#VERSION 3
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version3/trajectory.csv")
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-2000), combined trialtypes")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-2000), combined trialtypes")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))+
+  geom_hline(yintercept=0.33, color='coral', size=2,alpha=0.5)
+
+#VERSION 4: trial type 1
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version4/trajectory_trialtype1.csv")
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:30),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-2000), trial type 1")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,2))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-2000), trial type 1")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,2))+
+  geom_hline(yintercept=1, color='coral', size=2,alpha=0.5)
+
+#VERSION 4: trial type 2
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version4/trajectory_trialtype2.csv")
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:45),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-2000), trial type 2")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,45),breaks=seq(0,45,5))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-2000), trial type 2")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,45),breaks=seq(0,45,5))+
+  geom_hline(yintercept=0.33, color='coral', size=2,alpha=0.5)
+
+#VERSION 4: trial type 3
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version4/trajectory_trialtype3.csv")
+class(Traj.v1$delta.square)
+Traj.v1$delta.square <- as.numeric(as.character(Traj.v1$delta.square))
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:60),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-2000), trial type 3")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,60),breaks=seq(0,60,5))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-2000), trial type 3")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(1,60),breaks=seq(1,60,5))+
+  geom_hline(yintercept=0, color='coral', size=2,alpha=0.5)
+
+#VERSION 5 1000-3000
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version5/trajectory.csv")
+class(Traj.v1$delta.square)
+Traj.v1$delta.square <- as.numeric(as.character(Traj.v1$delta.square))
+class(Traj.v1$P)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-3000), combined trialtypes")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-3000), combined trialtypes")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))+
+  geom_hline(yintercept=0.33, color='coral', size=2,alpha=0.5)
+
+#VERSION 6: trial type 1
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version6/trajectory_trialtype1.csv")
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:30),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-3000), trial type 1")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,2))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-3000), trial type 1")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,2))+
+  geom_hline(yintercept=1, color='coral', size=2,alpha=0.5)
+
+#VERSION 6: trial type 2
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version6/trajectory_trialtype2.csv")
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:45),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-3000), trial type 2")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,45),breaks=seq(0,45,5))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-3000), trial type 2")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,45),breaks=seq(0,45,5))+
+  geom_hline(yintercept=0.33, color='coral', size=2,alpha=0.5)
+
+#VERSION 6: trial type 3
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version6/trajectory_trialtype3.csv")
+class(Traj.v1$delta.square)
+Traj.v1$delta.square <- as.numeric(as.character(Traj.v1$delta.square))
+class(Traj.v1$P)
+Traj.v1$trialnum2 <- rep(seq(1:60),times=129)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-3000), trial type 3")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,60),breaks=seq(0,60,5))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum2,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`1` = "all P0s",`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum2,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-3000), trial type 3")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(1,60),breaks=seq(1,60,5))+
+  geom_hline(yintercept=0, color='coral', size=2,alpha=0.5)
+
+```
+
+no DLR: correlate pupil response and delta square , all subjects and all trials
+```{r, echo=FALSE}
+#load data
+pupilanddeltasquare <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Data/V2/Modelling/Version1/PupilVSDeltaSquare_noDLR.csv")
+
+#plot all on same graph
+goo2 <- na.omit(pupilanddeltasquare)
+
+xyz1 <-cor.test(goo2$meanPUPIL[goo2$trialtype==1], goo2$delta.square[goo2$trialtype==1], alternative = "two.sided", method = "pearson")
+xyz1
+#t = -1.2463, df = 1239, p-value = 0.2129, cor = -0.035
+xyz2 <-cor.test(goo2$meanPUPIL[goo2$trialtype==2], goo2$delta.square[goo2$trialtype==2], alternative = "two.sided", method = "pearson")
+xyz2
+#t = -2.1593, df = 1834, p-value = 0.03096, cor = -0.050
+xyz3 <-cor.test(goo2$meanPUPIL[goo2$trialtype==3], goo2$delta.square[goo2$trialtype==3], alternative = "two.sided", method = "pearson")
+xyz3
+#error, standard deviation is zero
+
+ggplot(goo2,aes(x=meanPUPIL,y=delta.square))+geom_point()+
+  ggtitle("Adult Correlation")+
+  labs(x = "Change from baseline (%)", y = "Delta square")+
+  theme(plot.title = element_text(face="bold", size=16, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=16))+ 
+  theme(axis.text.x  = element_text(size=16),axis.text.y  = element_text(size=16))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  ylim(0,1)+
+  geom_vline(xintercept = 0)+stat_smooth(method=lm)+
+  facet_wrap(~trialtype)+
+  scale_x_continuous(labels=percent,limits=c(-.9,.9),breaks=seq(-.9,.9,0.2))
+```
+
+FINAL GRAPHS
+```{r}
+#VERSION 5 1000-3000 alpha
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version5/freeparams.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+goo1 <- subset(foo, version >1)
+#bar graph alpha
+goo2 <- ddply(goo1,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(  x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-3000)")+
+  scale_x_discrete(breaks=c("2","3"),labels=c("P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha (learning rate)",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 5 1000-3000
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version5/trajectory.csv")
+class(Traj.v1$delta.square)
+Traj.v1$delta.square <- as.numeric(as.character(Traj.v1$delta.square))
+class(Traj.v1$P)
+Traj.v1 <- subset(Traj.v1, version > 1)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-3000)")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-3000)")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))+
+  geom_hline(yintercept=0.33, color='coral', size=2,alpha=0.5)
+
+######
+
+#VERSION 3 1000-2000
+foo <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses/V2/Modelling/Version3/freeparams.csv")
+groupAI <- c("#fdb863", "#92c5de") #colors
+goo1 <- subset(foo, version >1)
+#bar graph alpha
+goo2 <- ddply(goo1,.(version),summarise,meanalpha=mean(alpha0,na.rm = TRUE),sealpha=sd(alpha0, na.rm = TRUE)/sqrt(length(alpha0)))
+limits2 <- aes(ymax = meanalpha + sealpha, ymin=meanalpha - sealpha)
+
+ggplot(goo2, aes(x=factor(version), y=meanalpha, fill=factor(version)))+
+  geom_bar(stat="identity")+guides(fill=FALSE)+
+  ggtitle("Pupil (1000-2000)")+
+  scale_x_discrete(breaks=c("2","3"),labels=c("P0=0.5","P0=1"))+
+  scale_y_continuous(name="alpha (learning rate)",limits=c(0,1),breaks=seq(0,1,0.25))+
+  scale_fill_brewer(palette="Set2")+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20), axis.text.y= element_text(size=20))+
+  theme(axis.title.x=element_blank())+
+  geom_errorbar(limits2, width=0.25,color="black")
+
+#VERSION 3
+Traj.v1 <-read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Analyses//V2/Modelling/Version3/trajectory.csv")
+Traj.v1 <- subset(Traj.v1, version > 1)
+class(Traj.v1$delta.square)
+class(Traj.v1$P)
+
+#delta.square
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanDelta=mean(delta.square,na.rm = TRUE),seDelta=sd(delta.square, na.rm = TRUE)/sqrt(length(delta.square)))
+facetlabels <- c(`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanDelta))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanDelta-seDelta,ymax=meanDelta+seDelta),alpha=0.7)+
+  ggtitle("Pupil (1000-2000)")+labs(x = "Trial number", y = "Delta square (prediction error)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))
+ 
+#P
+doo <- ddply(Traj.v1,.(trialnum,version),summarise,meanP=mean(P,na.rm = TRUE),seP=sd(P, na.rm = TRUE)/sqrt(length(P)))
+facetlabels <- c(`2` = "P0=0.5",`3` = "P0=1")
+
+ggplot(doo,aes(x=trialnum,y=meanP))+
+  geom_line()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  geom_ribbon(aes(ymin=meanP-seP,ymax=meanP+seP),alpha=0.7)+
+  ggtitle("Pupil (1000-2000)")+labs(x = "Trial number", y = "P (Prediction)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=20),legend.title=element_text(size=20))+
+  scale_y_continuous(limits=c(0,1),breaks=seq(0,1,0.2))+
+  facet_wrap(~version,dir="v",labeller = as_labeller(facetlabels))+
+  theme(strip.text = element_text(size=14))+
+  scale_x_continuous(limits=c(0,135),breaks=seq(0,135,15))+
+  geom_hline(yintercept=0.33, color='coral', size=2,alpha=0.5)
+
+```

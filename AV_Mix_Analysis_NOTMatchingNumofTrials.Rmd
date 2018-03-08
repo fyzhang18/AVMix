@@ -1,0 +1,544 @@
+---
+title: "Results_Final"
+author: "Felicia Zhang"
+date: "10/18/2016"
+output: html_document
+---
+
+1. Prepare Data
+```{r}
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(RColorBrewer)
+library(lmerTest)
+
+#load data
+orig = readRDS("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Data/V2/AVMix.rds")
+
+#colors
+grouptrial <- c("#333333", "#CC0066","#FF6600","#FFcc66","#666666","#999999")
+colorAV <- c("#333333", "#CC0066")
+colorA <- c("#FF6600","#666666")
+colorV <- c("#FFcc66","#999999")
+
+#trialtype (1=A1V1, 2=A2V2, 3=A2--, 4=--V2, 5=A3--, 6=--V3)
+
+#poo2 = keeping samples where Ss are looking at center of screen, ~ 400 x 400 box
+#screen dimensions of screen are 1280 x 1024 and image itself is 250 x 250 pixels 
+poo2 <- orig
+a <- which(poo2$RIGHT_GAZE_X < 440)
+poo2 <- poo2[-c(a), ]
+a <- which(poo2$RIGHT_GAZE_Y < 312)
+poo2 <- poo2[-c(a), ]
+a <- which(poo2$RIGHT_GAZE_X > 840)
+poo2 <- poo2[-c(a), ]
+a <- which(poo2$RIGHT_GAZE_Y > 712)
+poo2 <- poo2[-c(a), ]
+
+#poo3 = poo2 + removing subjects with less than 50% looking percentage (sub 19, 26, 37, 40) N = 46
+poo3 <- subset(poo2, subID !=19)
+poo3 <- subset(poo3, subID !=26)
+poo3 <- subset(poo3, subID !=37)
+poo3 <- subset(poo3, subID !=40)
+```
+
+Only use samples where Ss are looking at center of screen, ~ 400 x 400 box
+```{r }
+#1. calculate trackloss 
+subs <- unique(poo$subID)
+#create new data frame 
+zoo <- data.frame(subID=numeric(),percentremoved=numeric())
+
+for (j in 1:length(subs)){
+  zold <- length(which(poo$subID==subs[j]))
+  znew <- length(which(poo2$subID==subs[j]))
+  kept <- znew/zold
+  zz <- c(subs[j],kept)
+  zoo <- rbind(zoo,zz)
+}
+names(zoo)[1] <- "subID"
+names(zoo)[2] <- "percentkept"
+zoo$percentkept <- as.numeric(zoo$percentkept)
+
+#2. plot
+ggplot(zoo,aes(x=factor(subID),y=percentkept))+
+    theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  geom_bar(stat="identity")+ggtitle("Percent kept per subject after removing samples not looking at center")+
+  labs(x = "Subject ID", y = "Percent kept")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.position="none")+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,0.2))+
+  geom_hline(yintercept = mean(zoo$percentkept), size =1,color = "red")+
+  geom_hline(yintercept = 0.5, size =1,color = "green")
+
+```
+
+Subject summary graphs: Looking percent per subject
+```{r }
+#1. calculate trackloss
+subs <- unique(poo2$subID)
+#create new data frame 
+zoo <- data.frame(subID=numeric(),percentlooking=numeric())
+
+for (j in 1:length(subs)){
+  z <- subset(poo2, subID == subs[j])
+  notlooking <- length(which(is.na(z$RIGHT_PUPIL_SIZE)))
+  notlookingpercent <- notlooking / length(z$RECORDING_SESSION_LABEL)
+  lookingpercent <- 1 - notlookingpercent
+  zz <- c(subs[j],lookingpercent)
+  zoo <- rbind(zoo,zz)
+}
+names(zoo)[1] <- "subID"
+names(zoo)[2] <- "percentlooking"
+zoo$percentlooking <- as.numeric(zoo$percentlooking)
+#2. plot
+
+ggplot(zoo,aes(x=factor(subID),y=percentlooking))+
+    theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  geom_bar(stat="identity")+ggtitle("Looking percentage per subject")+
+  labs(x = "Subject ID", y = "Percent Looking")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.position="none")+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,0.2))+
+  geom_hline(yintercept = mean(zoo$percentlooking), size =1,color = "red")+
+  geom_hline(yintercept = 0.5, size =1,color = "green")
+```
+
+X and Y coordinate for each subject and each trial type
+```{r}
+#0-1000ms
+hoo1 <- subset(poo3, TIMECODE < 1001)
+#calculation avg gaze x and gaze y position during that period
+doo <- ddply(hoo1,.(subID,TRIAL_INDEX,trialtype),summarise,meanY=mean(RIGHT_GAZE_Y,na.rm = TRUE),meanX=mean(RIGHT_GAZE_X,na.rm = TRUE)) 
+
+doo <- ddply(hoo1,.(subID,trialtype),summarise,meanY=mean(RIGHT_GAZE_Y,na.rm = TRUE),meanX=mean(RIGHT_GAZE_X,na.rm = TRUE)) 
+
+ggplot(doo,aes(x=meanX,y=meanY,color=factor(trialtype)))+
+  geom_point()+ggtitle("Gaze position for every subject (0-1000ms)")+
+  labs(x = "X coordinate", y = "Y coordinate")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  scale_x_continuous(limits=c(0,1280),breaks=seq(0,1280,300),position="top")+
+  scale_y_reverse(limits = c(1024, 0))+scale_color_manual(values=grouptrial,name="Trial Type", breaks=c("1", "2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))
+
+#1000-2000
+hoo2 <- subset(poo3, TIMECODE > 999 & TIMECODE < 2001)
+#calculation avg gaze x and gaze y position during that period
+doo2 <- ddply(hoo2,.(subID,TRIAL_INDEX,trialtype),summarise,meanY=mean(RIGHT_GAZE_Y,na.rm = TRUE),meanX=mean(RIGHT_GAZE_X,na.rm = TRUE)) 
+doo2 <- ddply(hoo2,.(subID,trialtype),summarise,meanY=mean(RIGHT_GAZE_Y,na.rm = TRUE),meanX=mean(RIGHT_GAZE_X,na.rm = TRUE)) 
+
+ggplot(doo2,aes(x=meanX,y=meanY,color=factor(trialtype)))+
+  geom_point()+ggtitle("Gaze position for every subject (1000-2000ms)")+
+  labs(x = "X coordinate", y = "Y coordinate")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  scale_x_continuous(limits=c(0,1280),breaks=seq(0,1280,300),position="top")+
+  scale_y_reverse(limits = c(1024, 0))+scale_color_manual(values=grouptrial,name="Trial Type", breaks=c("1", "2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))
+
+```
+
+
+Timecourse graph: all trialtypes
+```{r}
+#only care about first 3000ms
+poo4 <- subset(poo3, TIMECODE < 3000)
+
+aa = c(0,1000)
+doo <- ddply(poo4,.(subID,TIMECODE,trialtype),summarise,avg.pupilSs=mean(PUPIL_CORRECTED,na.rm = TRUE)) 
+doo2 <- ddply(doo,.(TIMECODE,trialtype),summarise,avg.pupil=mean(avg.pupilSs,na.rm = TRUE),sePupil=sd(avg.pupilSs, na.rm = TRUE)/sqrt(length(avg.pupilSs))) #collapse across trials
+
+ggplot(doo2,aes(x=TIMECODE,y=avg.pupil,fill=factor(trialtype),colour=factor(trialtype)))+
+  geom_line()+ggtitle("Timecourse")+
+  theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  labs(x = "Time (ms)", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  scale_y_continuous(labels=percent,limits=c(-0.1,.1),breaks=seq(-0.1,0.1,0.02))+
+  scale_x_continuous(limits=c(0,3000),breaks=seq(0,3000,500))+
+  geom_ribbon(aes(ymin=avg.pupil-sePupil,ymax=avg.pupil+sePupil),alpha=0.5)+
+  scale_fill_manual(values=grouptrial,name="Trial Type", breaks=c("1", "2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))+
+  scale_colour_manual(values=grouptrial)+guides(color=FALSE)+geom_vline(xintercept = aa)
+
+#facet wrap
+label <- c(`1` = "A1V1",`2` = "A2V2",`3` = "A2--",`4` = "--V2",`5` = "A3--",`6` = "--V3")
+ggplot(doo2,aes(x=TIMECODE,y=avg.pupil,fill=factor(trialtype),colour=factor(trialtype)))+
+  geom_line()+ggtitle("Timecourse")+
+  theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  labs(x = "Time (ms)", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  scale_y_continuous(labels=percent,limits=c(-0.1,.1),breaks=seq(-0.1,0.1,0.02))+
+  scale_x_continuous(limits=c(0,3000),breaks=seq(0,3000,500))+
+  geom_ribbon(aes(ymin=avg.pupil-sePupil,ymax=avg.pupil+sePupil),alpha=0.5)+
+  theme(legend.position="none")+geom_vline(xintercept = aa)+
+  facet_wrap(~trialtype,ncol=2,labeller = as_labeller(label))+theme(strip.text = element_text(size=16))+scale_fill_manual(values=grouptrial)+scale_colour_manual(values=grouptrial)
+```
+
+Timecourse graph 
+```{r}
+#1. comparing A1V1 to A2V2
+#only care about first 3000ms
+poo4 <- subset(poo3, TIMECODE < 3000)
+
+aa = c(0,1000)
+doo <- ddply(poo4,.(subID,TIMECODE,trialtype),summarise,avg.pupilSs=mean(PUPIL_CORRECTED,na.rm = TRUE)) 
+doo2 <- ddply(doo,.(TIMECODE,trialtype),summarise,avg.pupil=mean(avg.pupilSs,na.rm = TRUE),sePupil=sd(avg.pupilSs, na.rm = TRUE)/sqrt(length(avg.pupilSs))) #collapse across trials
+doo3 <- subset(doo2, trialtype < 3)
+
+ggplot(doo3,aes(x=TIMECODE,y=avg.pupil,fill=factor(trialtype),colour=factor(trialtype)))+
+  geom_line()+ggtitle("A1V1 vs A2V2")+
+  theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  labs(x = "Time (ms)", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  scale_y_continuous(labels=percent,limits=c(-0.1,.1),breaks=seq(-0.1,0.1,0.02))+
+  scale_x_continuous(limits=c(0,3000),breaks=seq(0,3000,500))+
+  geom_ribbon(aes(ymin=avg.pupil-sePupil,ymax=avg.pupil+sePupil),alpha=0.3)+
+  scale_fill_manual(values=colorAV,name="Trial Type", breaks=c("1", "2"),labels=c("A1V1", "A2V2"))+guides(color=FALSE)+geom_vline(xintercept = aa)+scale_colour_manual(values=colorAV)
+
+#2.  comparing A2-- to A3--
+doo4 <- subset(doo2, trialtype== 3 | trialtype== 5)
+ggplot(doo4,aes(x=TIMECODE,y=avg.pupil,fill=factor(trialtype),colour=factor(trialtype)))+
+  geom_line()+ggtitle("A2-- to A3--")+
+  theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  labs(x = "Time (ms)", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  scale_y_continuous(labels=percent,limits=c(-0.1,.1),breaks=seq(-0.1,0.1,0.02))+
+  scale_x_continuous(limits=c(0,3000),breaks=seq(0,3000,500))+
+  geom_ribbon(aes(ymin=avg.pupil-sePupil,ymax=avg.pupil+sePupil),alpha=0.3)+
+  scale_fill_manual(values=colorA,name="Trial Type", breaks=c("3","5"),labels=c("A2--","A3--"))+
+  guides(color=FALSE)+geom_vline(xintercept = aa)+scale_colour_manual(values=colorA)
+
+#3.  comparing V2-- to V3--
+doo5 <- subset(doo2, trialtype== 4 | trialtype== 6)
+ggplot(doo5,aes(x=TIMECODE,y=avg.pupil,fill=factor(trialtype),colour=factor(trialtype)))+
+  geom_line()+ggtitle("V2-- to V3--")+
+  theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  labs(x = "Time (ms)", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  scale_y_continuous(labels=percent,limits=c(-0.1,.1),breaks=seq(-0.1,0.1,0.02))+
+  scale_x_continuous(limits=c(0,3000),breaks=seq(0,3000,500))+
+  geom_ribbon(aes(ymin=avg.pupil-sePupil,ymax=avg.pupil+sePupil),alpha=0.3)+
+  scale_fill_manual(values=colorV,name="Trial Type", breaks=c("4","6"),labels=c("--V2","--V3"))+
+  guides(color=FALSE)+geom_vline(xintercept = aa)+scale_colour_manual(values=colorV)
+```
+
+PDR response for first period and second period
+```{r}
+#PDR for 0 - 1000s
+poo4 <- subset(poo3, TIMECODE < 1001)
+goo <- ddply(poo4,.(subID,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+goo2 <- ddply(goo,.(trialtype),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+limits <- aes(ymax = meanPUPILSs + sePUPIL, ymin=meanPUPILSs - sePUPIL)
+
+ggplot(goo2,aes(x=factor(trialtype),y=meanPUPILSs,color=factor(trialtype),fill=factor(trialtype)))+
+geom_bar(stat = "identity")+ggtitle("PDR (0-1000ms)")+
+theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+labs(x = "Trial type", y = "Pupil change from baseline (%)")+
+theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+theme(axis.title = element_text(face="bold", size=20))+ 
+theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+geom_errorbar(limits, width=0.25,color="black")+
+scale_x_discrete(breaks=c("1","2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))+theme(legend.position="none")+
+scale_y_continuous(labels=percent,limits=c(-0.05,.1),breaks=seq(-0.05,.1,0.01))+
+scale_fill_manual(values=grouptrial)+scale_colour_manual(values=grouptrial)
+
+#PDR for 1000-2000ms
+poo4 <- subset(poo3, TIMECODE < 2001 & TIMECODE > 1000)
+goo <- ddply(poo4,.(subID,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+goo2 <- ddply(goo,.(trialtype),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+limits <- aes(ymax = meanPUPILSs + sePUPIL, ymin=meanPUPILSs - sePUPIL)
+
+ggplot(goo2,aes(x=factor(trialtype),y=meanPUPILSs,color=factor(trialtype),fill=factor(trialtype)))+
+geom_bar(stat = "identity")+ggtitle("PDR (1000-2000ms)")+
+theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+labs(x = "Trial type", y = "Pupil change from baseline (%)")+
+theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+theme(axis.title = element_text(face="bold", size=20))+ 
+theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+geom_errorbar(limits, width=0.25,color="black")+
+scale_x_discrete(breaks=c("1","2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))+
+theme(legend.position="none")+
+scale_y_continuous(labels=percent,limits=c(-0.05,.1),breaks=seq(-0.05,.1,0.01))+
+scale_fill_manual(values=grouptrial)+scale_colour_manual(values=grouptrial)
+```
+
+PDR response splitting 500ms
+```{r}
+#PDR for 0 - 500s
+poo4 <- subset(poo3, TIMECODE < 501)
+goo <- ddply(poo4,.(subID,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+goo2 <- ddply(goo,.(trialtype),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+goo2$period <- 1
+
+#PDR for 501-1000ms
+poo4 <- subset(poo3, TIMECODE < 1001 & TIMECODE > 500)
+goo <- ddply(poo4,.(subID,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+goo3 <- ddply(goo,.(trialtype),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+goo3$period <- 2
+loo <- rbind(goo2,goo3)
+
+#PDR for 1001-1500ms
+poo4 <- subset(poo3, TIMECODE < 1501 & TIMECODE > 1000)
+goo <- ddply(poo4,.(subID,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+goo4 <- ddply(goo,.(trialtype),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+goo4$period <- 3
+loo <- rbind(loo,goo4)
+
+#PDR for 1501-2000ms
+poo4 <- subset(poo3, TIMECODE < 2001 & TIMECODE > 1500)
+goo <- ddply(poo4,.(subID,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+goo5 <- ddply(goo,.(trialtype),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+goo5$period <- 4
+loo <- rbind(loo,goo5)
+
+limits <- aes(ymax = meanPUPILSs + sePUPIL, ymin=meanPUPILSs - sePUPIL)
+period <- c(`1` = "0-500ms",`2` = "501-1000ms",`3` = "1001-1500ms", `4` = "1501-2000ms")
+
+ggplot(loo,aes(x=factor(trialtype),y=meanPUPILSs,color=factor(trialtype),fill=factor(trialtype)))+
+geom_bar(stat = "identity")+ggtitle("PDR")+
+theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+labs(x = "Trial type", y = "Pupil change from baseline (%)")+
+theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+theme(axis.title = element_text(face="bold", size=20))+ 
+theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+geom_errorbar(limits, width=0.25,color="black")+
+scale_x_discrete(breaks=c("1","2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))+
+theme(legend.position="none")+
+scale_y_continuous(labels=percent,limits=c(-0.05,.1),breaks=seq(-0.05,.1,0.02))+
+facet_wrap(~period,labeller = as_labeller(period))+
+theme(strip.text = element_text(size=16))+
+scale_fill_manual(values=grouptrial)+scale_colour_manual(values=grouptrial)
+```
+
+Trial by trial for stim 1 (1000ms bins) 
+```{r}
+#PDR for 0 - 1000s
+poo4 <- subset(poo3, TIMECODE < 1001)
+goo <- ddply(poo4,.(subID,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+
+goo2 <- ddply(goo,.(trialtype,timesseen),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+label <- c(`1` = "A1V1",`2` = "A2V2",`3` = "A2--",`4` = "--V2",`5` = "A3--",`6` = "--V3")
+
+#cor.test
+xyz1 <-cor.test(goo2$timesseen[goo2$trialtype==1], goo2$meanPUPILSs[goo2$trialtype==1], alternative = "two.sided", method = "pearson")
+xyz1
+xyz2 <-cor.test(goo2$timesseen[goo2$trialtype==2], goo2$meanPUPILSs[goo2$trialtype==2], alternative = "two.sided", method = "pearson")
+xyz2
+xyz3 <-cor.test(goo2$timesseen[goo2$trialtype==3], goo2$meanPUPILSs[goo2$trialtype==3], alternative = "two.sided", method = "pearson")
+xyz3
+xyz4 <-cor.test(goo2$timesseen[goo2$trialtype==4], goo2$meanPUPILSs[goo2$trialtype==4], alternative = "two.sided", method = "pearson")
+xyz4
+xyz5 <-cor.test(goo2$timesseen[goo2$trialtype==5], goo2$meanPUPILSs[goo2$trialtype==5], alternative = "two.sided", method = "pearson")
+xyz5
+xyz6 <-cor.test(goo2$timesseen[goo2$trialtype==6], goo2$meanPUPILSs[goo2$trialtype==6], alternative = "two.sided", method = "pearson")
+xyz6
+
+yoo3 <- data.frame(trialtype= numeric(6), comments= numeric(6))
+yoo3$trialtype <- 1:6
+yoo3$comments[1] <- "cor = 0.18, p = 0.35"
+yoo3$comments[2] <- "cor = 0.28, p = 0.31"
+yoo3$comments[3] <- "cor = -0.16, p = 0.57"
+yoo3$comments[4] <- "cor = -0.28, p = 0.31"
+yoo3$comments[5] <- "cor = -0.00, p = 0.98"
+yoo3$comments[6] <- "cor = 0.25, p = 0.17"
+
+ggplot(goo2,aes(x=timesseen,y=meanPUPILSs,color=factor(trialtype),fill=factor(trialtype)))+
+  geom_point()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  ggtitle("PDR (0-1000ms) (XX--)")+
+  labs(x = "Times seen", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  facet_wrap(~trialtype,ncol=2,labeller = as_labeller(label))+theme(strip.text = element_text(size=14))+
+  stat_smooth(method=lm)+theme(legend.position="none")+
+  scale_y_continuous(labels=percent,limits=c(-.1,.1),breaks=seq(-.1,.1,0.02))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,3))+
+  geom_text(data=yoo3, aes(x=15, y=0.1, label=comments), colour="black", size = 4)+
+  scale_fill_manual(values=grouptrial)+scale_colour_manual(values=grouptrial)
+
+```
+
+Trial by trial for stim 2 (1000ms bins)
+```{r}
+#PDR for 1000 - 2000s
+poo4 <- subset(poo3, TIMECODE < 2001 & TIMECODE > 1000)
+goo <- ddply(poo4,.(subID,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+
+goo2 <- ddply(goo,.(trialtype,timesseen),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+label <- c(`1` = "A1V1",`2` = "A2V2",`3` = "A2--",`4` = "--V2",`5` = "A3--",`6` = "--V3")
+
+#cor.test
+xyz1 <-cor.test(goo2$timesseen[goo2$trialtype==1], goo2$meanPUPILSs[goo2$trialtype==1], alternative = "two.sided", method = "pearson")
+xyz1
+xyz2 <-cor.test(goo2$timesseen[goo2$trialtype==2], goo2$meanPUPILSs[goo2$trialtype==2], alternative = "two.sided", method = "pearson")
+xyz2
+xyz3 <-cor.test(goo2$timesseen[goo2$trialtype==3], goo2$meanPUPILSs[goo2$trialtype==3], alternative = "two.sided", method = "pearson")
+xyz3
+xyz4 <-cor.test(goo2$timesseen[goo2$trialtype==4], goo2$meanPUPILSs[goo2$trialtype==4], alternative = "two.sided", method = "pearson")
+xyz4
+xyz5 <-cor.test(goo2$timesseen[goo2$trialtype==5], goo2$meanPUPILSs[goo2$trialtype==5], alternative = "two.sided", method = "pearson")
+xyz5
+xyz6 <-cor.test(goo2$timesseen[goo2$trialtype==6], goo2$meanPUPILSs[goo2$trialtype==6], alternative = "two.sided", method = "pearson")
+xyz6
+
+yoo3 <- data.frame(trialtype= numeric(6), comments= numeric(6))
+yoo3$trialtype <- 1:6
+yoo3$comments[1] <- "cor = 0.375, p = 0.04*"
+yoo3$comments[2] <- "cor = 0.374, p = 0.17"
+yoo3$comments[3] <- "cor = -0.15, p = 0.60"
+yoo3$comments[4] <- "cor = 0.25, p = 0.37"
+yoo3$comments[5] <- "cor = 0.02, p = 0.88"
+yoo3$comments[6] <- "cor = 0.09, p = 0.65"
+
+ggplot(goo2,aes(x=timesseen,y=meanPUPILSs,color=factor(trialtype),fill=factor(trialtype)))+
+  geom_point()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  ggtitle("PDR (1000-2000ms) (--XX)")+
+  labs(x = "Times seen", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  facet_wrap(~trialtype,ncol=2,labeller = as_labeller(label))+theme(strip.text = element_text(size=14))+
+  stat_smooth(method=lm)+theme(legend.position="none")+
+  scale_y_continuous(labels=percent,limits=c(-.1,.12),breaks=seq(-.1,.12,0.02))+
+  scale_x_continuous(limits=c(0,30),breaks=seq(0,30,3))+
+  geom_text(data=yoo3, aes(x=15, y=0.1, label=comments), colour="black", size = 4)+
+  scale_fill_manual(values=grouptrial)+scale_colour_manual(values=grouptrial)
+```
+
+Trial by trial for stim 1 (reducing A1V1 to 20) (1000ms bins)
+```{r}
+#PDR for 0 - 1000s
+poo4 <- subset(poo3, TIMECODE < 1001)
+goo <- ddply(poo4,.(subID,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+
+goo2 <- ddply(goo,.(trialtype,timesseen),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+label <- c(`1` = "A1V1",`2` = "A2V2",`3` = "A2--",`4` = "--V2",`5` = "A3--",`6` = "--V3")
+goo2 <- subset(goo2, timesseen < 16)
+
+#cor.test
+xyz1 <-cor.test(goo2$timesseen[goo2$trialtype==1], goo2$meanPUPILSs[goo2$trialtype==1], alternative = "two.sided", method = "pearson")
+xyz1
+xyz2 <-cor.test(goo2$timesseen[goo2$trialtype==2], goo2$meanPUPILSs[goo2$trialtype==2], alternative = "two.sided", method = "pearson")
+xyz2
+xyz3 <-cor.test(goo2$timesseen[goo2$trialtype==3], goo2$meanPUPILSs[goo2$trialtype==3], alternative = "two.sided", method = "pearson")
+xyz3
+xyz4 <-cor.test(goo2$timesseen[goo2$trialtype==4], goo2$meanPUPILSs[goo2$trialtype==4], alternative = "two.sided", method = "pearson")
+xyz4
+xyz5 <-cor.test(goo2$timesseen[goo2$trialtype==5], goo2$meanPUPILSs[goo2$trialtype==5], alternative = "two.sided", method = "pearson")
+xyz5
+xyz6 <-cor.test(goo2$timesseen[goo2$trialtype==6], goo2$meanPUPILSs[goo2$trialtype==6], alternative = "two.sided", method = "pearson")
+xyz6
+
+yoo3 <- data.frame(trialtype= numeric(6), comments= numeric(6))
+yoo3$trialtype <- 1:6
+yoo3$comments[1] <- "cor = -0.58, p = 0.02*"
+yoo3$comments[2] <- "cor = 0.28, p = 0.31"
+yoo3$comments[3] <- "cor = -0.16, p = 0.57"
+yoo3$comments[4] <- "cor = -0.28, p = 0.31"
+yoo3$comments[5] <- "cor = -0.44, p = 0.09"
+yoo3$comments[6] <- "cor = 0.23, p = 0.40"
+
+ggplot(goo2,aes(x=timesseen,y=meanPUPILSs,color=factor(trialtype),fill=factor(trialtype)))+
+  geom_point()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  ggtitle("PDR (0-1000ms) (XX--)")+
+  labs(x = "Times seen", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  facet_wrap(~trialtype,ncol=2,labeller = as_labeller(label))+theme(strip.text = element_text(size=14))+
+  stat_smooth(method=lm)+theme(legend.position="none")+
+  scale_y_continuous(labels=percent,limits=c(-.1,.1),breaks=seq(-.1,.1,0.02))+
+  scale_x_continuous(limits=c(0,15),breaks=seq(0,15,3))+
+  geom_text(data=yoo3, aes(x=7, y=0.1, label=comments), colour="black", size = 4)+
+  scale_fill_manual(values=grouptrial)+scale_colour_manual(values=grouptrial)
+
+```
+
+Trial by trial for stim 2 (reducing A1V1 to 20) (1000ms bins)
+```{r}
+#PDR for 1000 - 2000s
+poo4 <- subset(poo3, TIMECODE < 2001 & TIMECODE > 1000)
+goo <- ddply(poo4,.(subID,TRIAL_INDEX,trialtype),summarise,meanPUPIL=mean(PUPIL_CORRECTED,na.rm = TRUE))
+
+goo2 <- ddply(goo,.(trialtype,timesseen),summarise,meanPUPILSs=mean(meanPUPIL,na.rm = TRUE),sePUPIL=sd(meanPUPIL, na.rm = TRUE)/sqrt(length(meanPUPIL))) #collapse across subjects
+label <- c(`1` = "A1V1",`2` = "A2V2",`3` = "A2--",`4` = "--V2",`5` = "A3--",`6` = "--V3")
+goo2 <- subset(goo2, timesseen < 16)
+
+#cor.test
+xyz1 <-cor.test(goo2$timesseen[goo2$trialtype==1], goo2$meanPUPILSs[goo2$trialtype==1], alternative = "two.sided", method = "pearson")
+xyz1
+xyz2 <-cor.test(goo2$timesseen[goo2$trialtype==2], goo2$meanPUPILSs[goo2$trialtype==2], alternative = "two.sided", method = "pearson")
+xyz2
+xyz3 <-cor.test(goo2$timesseen[goo2$trialtype==3], goo2$meanPUPILSs[goo2$trialtype==3], alternative = "two.sided", method = "pearson")
+xyz3
+xyz4 <-cor.test(goo2$timesseen[goo2$trialtype==4], goo2$meanPUPILSs[goo2$trialtype==4], alternative = "two.sided", method = "pearson")
+xyz4
+xyz5 <-cor.test(goo2$timesseen[goo2$trialtype==5], goo2$meanPUPILSs[goo2$trialtype==5], alternative = "two.sided", method = "pearson")
+xyz5
+xyz6 <-cor.test(goo2$timesseen[goo2$trialtype==6], goo2$meanPUPILSs[goo2$trialtype==6], alternative = "two.sided", method = "pearson")
+xyz6
+
+yoo3 <- data.frame(trialtype= numeric(6), comments= numeric(6))
+yoo3$trialtype <- 1:6
+yoo3$comments[1] <- "cor = -0.39, p = 0.15"
+yoo3$comments[2] <- "cor = 0.37, p = 0.17"
+yoo3$comments[3] <- "cor = -0.15, p = 0.60"
+yoo3$comments[4] <- "cor = 0.25, p = 0.37"
+yoo3$comments[5] <- "cor = -0.55, p = 0.03*"
+yoo3$comments[6] <- "cor = 0.23, p = 0.41"
+
+ggplot(goo2,aes(x=timesseen,y=meanPUPILSs,color=factor(trialtype),fill=factor(trialtype)))+
+  geom_point()+theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(), axis.line = element_line(colour = "black"))+
+  ggtitle("PDR (1000-2000ms) (--XX)")+
+  labs(x = "Times seen", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  facet_wrap(~trialtype,ncol=2,labeller = as_labeller(label))+theme(strip.text = element_text(size=14))+
+  stat_smooth(method=lm)+theme(legend.position="none")+
+  scale_y_continuous(labels=percent,limits=c(-.1,.12),breaks=seq(-.1,.12,0.02))+
+  scale_x_continuous(limits=c(0,15),breaks=seq(0,15,3))+
+  geom_text(data=yoo3, aes(x=7, y=0.1, label=comments), colour="black", size = 4)+
+  scale_fill_manual(values=grouptrial)+scale_colour_manual(values=grouptrial)
+
+```
