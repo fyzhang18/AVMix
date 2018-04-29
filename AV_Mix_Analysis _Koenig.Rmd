@@ -1,0 +1,256 @@
+---
+title: "Results_Final"
+author: "Felicia Zhang"
+date: "10/18/2016"
+output: html_document
+---
+
+1. Prepare Data
+```{r}
+library(ggplot2) 
+library(zoo)
+library(reshape)
+library(plyr)
+library(scales) 
+library(data.table)
+library(signal)
+library(matrixStats)
+library(lme4)
+library(arm)
+library(RColorBrewer)
+library(lmerTest)
+library(boot)
+library(microbenchmark)
+
+#load data
+#orig = read.csv("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mixed/Data/V2/AVMix_final.csv")  
+#orig$X <- NULL
+orig = readRDS("/Volumes/emberson/ResearchProjects/Pupillometry/AV_Mix/Data/V2/AVMix.rds")
+#orig is only samples where Ss are looking at center of screen, ~ 400 x 400 box
+
+#colors
+grouptrial <- c("#333333", "#CC0066","#FF6600","#FFcc66","#666666","#999999")
+colorAV <- c("#333333", "#CC0066")
+colorA <- c("#FF6600","#666666")
+colorV <- c("#FFcc66","#999999")
+colorVom <- c("#CC0066", "#FF6600")
+colorAom <- c("#CC0066", "#FFcc66")
+colortimes <- c("#0099FF", "#0033FF")
+#trialtype (1=A1V1, 2=A2V2, 3=A2--, 4=--V2, 5=A3--, 6=--V3)
+#screen dimensions of screen are 1280 x 1024 and image itself is 250 x 250 pixels 
+
+#poo4 = matching number of times seen
+poo4 <- subset(orig, timesseen < 16)
+```
+
+Looking percent per subject
+```{r }
+#1. calculate trackloss
+subs <- unique(poo2$subID)
+#create new data frame 
+zoo <- data.frame(subID=numeric(),percentlooking=numeric())
+
+for (j in 1:length(subs)){
+  z <- subset(poo2, subID == subs[j])
+  notlooking <- length(which(is.na(z$RIGHT_PUPIL_SIZE)))
+  notlookingpercent <- notlooking / length(z$RECORDING_SESSION_LABEL)
+  lookingpercent <- 1 - notlookingpercent
+  zz <- c(subs[j],lookingpercent)
+  zoo <- rbind(zoo,zz)
+}
+names(zoo)[1] <- "subID"
+names(zoo)[2] <- "percentlooking"
+zoo$percentlooking <- as.numeric(zoo$percentlooking)
+#2. plot
+
+ggplot(zoo,aes(x=factor(subID),y=percentlooking))+
+    theme_bw()+theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  geom_bar(stat="identity")+ggtitle("Looking percentage per subject")+
+  labs(x = "Subject ID", y = "Percent Looking")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.position="none")+
+  scale_y_continuous(labels=percent,limits=c(0,1),breaks=seq(0,1,0.2))+
+  geom_hline(yintercept = mean(zoo$percentlooking), size =1,color = "red")+
+  geom_hline(yintercept = 0.5, size =1,color = "green")
+```
+
+X and Y coordinate for each subject and each trial type
+```{r}
+#0-1000ms
+hoo1 <- subset(poo2, TIMECODE < 1001)
+#calculation avg gaze x and gaze y position during that period
+doo <- ddply(hoo1,.(subID,TRIAL_INDEX,trialtype),summarise,meanY=mean(RIGHT_GAZE_Y,na.rm = TRUE),meanX=mean(RIGHT_GAZE_X,na.rm = TRUE)) 
+
+doo <- ddply(hoo1,.(subID,trialtype),summarise,meanY=mean(RIGHT_GAZE_Y,na.rm = TRUE),meanX=mean(RIGHT_GAZE_X,na.rm = TRUE)) 
+
+ggplot(doo,aes(x=meanX,y=meanY,color=factor(trialtype)))+
+  geom_point()+ggtitle("Gaze position for every subject (0-1000ms)")+
+  labs(x = "X coordinate", y = "Y coordinate")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  scale_x_continuous(limits=c(0,1280),breaks=seq(0,1280,300),position="top")+
+  scale_y_reverse(limits = c(1024, 0))+scale_color_manual(values=grouptrial,name="Trial Type", breaks=c("1", "2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))
+
+#1000-2000
+hoo2 <- subset(poo2, TIMECODE > 999 & TIMECODE < 2001)
+#calculation avg gaze x and gaze y position during that period
+doo2 <- ddply(hoo2,.(subID,TRIAL_INDEX,trialtype),summarise,meanY=mean(RIGHT_GAZE_Y,na.rm = TRUE),meanX=mean(RIGHT_GAZE_X,na.rm = TRUE)) 
+doo2 <- ddply(hoo2,.(subID,trialtype),summarise,meanY=mean(RIGHT_GAZE_Y,na.rm = TRUE),meanX=mean(RIGHT_GAZE_X,na.rm = TRUE)) 
+
+ggplot(doo2,aes(x=meanX,y=meanY,color=factor(trialtype)))+
+  geom_point()+ggtitle("Gaze position for every subject (1000-2000ms)")+
+  labs(x = "X coordinate", y = "Y coordinate")+
+  theme(plot.title = element_text(face="bold", size=20, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=20))+ 
+  theme(axis.text.x  = element_text(size=20),axis.text.y  = element_text(size=20))+
+  theme(legend.text=element_text(size=16),legend.title=element_text(size=16))+
+  scale_x_continuous(limits=c(0,1280),breaks=seq(0,1280,300),position="top")+
+  scale_y_reverse(limits = c(1024, 0))+scale_color_manual(values=grouptrial,name="Trial Type", breaks=c("1", "2","3","4","5","6"),labels=c("A1V1", "A2V2", "A2--","--V2","A3--","--V3"))
+
+```
+
+MAKE PLOTS ACCORDING TO KOENIG ANALYSIS
+
+trial types: trialtype (1=A1V1, 2=A2V2, 3=A2--, 4=--V2, 5=A3--, 6=--V3)
+average PDR
+X: block
+Y: pupil change
+facet wrap by trial type
+```{r}
+#only care about first 4000ms
+#2s + 4.6s min
+poo5 <- subset(poo4, TIMECODE > 999 & TIMECODE < 3001)
+poo5$block <- 1 #12
+poo5$block[poo5$timesseen > 3 & poo5$timesseen < 7] <- 2 #4 5 6
+poo5$block[poo5$timesseen > 6 & poo5$timesseen < 10] <- 3 #7 8 9
+poo5$block[poo5$timesseen > 9 & poo5$timesseen < 13] <- 4 #10 11 12
+poo5$block[poo5$timesseen > 12] <- 5 #13 14 15
+
+doo <- ddply(poo5,.(subID,block,trialtype),summarise,avg.pupilSs=mean(PUPIL_CORRECTED,na.rm = TRUE)) 
+doo2 <- ddply(doo,.(block,trialtype),summarise,avg.pupil=mean(avg.pupilSs,na.rm = TRUE),sePupil=sd(avg.pupilSs, na.rm = TRUE)/sqrt(length(avg.pupilSs)))
+
+#only care about A1V1, A2V2, A3-- or 1,2,5
+doo3<-doo2[!(doo2$trialtype==3 | doo2$trialtype==4 | doo2$trialtype==6),]
+doo3$label <- doo3$trialtype
+doo3$label[doo3$trialtype==5] <- 1 #trialtype5 = A3--
+doo3$label[doo3$trialtype==1] <- 3 #trialtype1 = A1V1
+
+#facet wrap
+label <- c(`1` = "Low uncertainty, low reward",`2` = "High uncertainty, moderate reward",`3` = "Low uncertainty, high reward")
+ggplot(doo3,aes(x=block,y=avg.pupil,fill=factor(label),colour=factor(label)))+
+  geom_errorbar(colour="black", width=.1, aes(ymin=avg.pupil-sePupil, ymax=avg.pupil+sePupil))+
+  geom_point(shape=21, size=4)+
+  ggtitle("Pupil change")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  labs(x = "Block (3 trials per block)", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  scale_y_continuous(labels=percent,limits=c(-0.05,.15),breaks=seq(-0.05,0.15,0.02))+
+  theme(legend.position="none")+
+  facet_wrap(~label,nrow = 1,labeller = as_labeller(label))+
+  theme(strip.text = element_text(size=16))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  geom_smooth(method=lm,se=FALSE)+
+  scale_fill_manual(values=c("#2a92ff", "#ff15ff", "#559455"))+
+  scale_color_manual(values=c("#2a92ff", "#ff15ff", "#559455"))
+```
+
+Stats:
+1. ANOVA trialtype x block
+2.t-test for each condition
+```{r}
+#Two Within Factors W1 W2, Two Between Factors B1 B2 
+#fit <- aov(y~(W1*W2*B1*B2)+Error(Subject/(W1*W2))+(B1*B2), data=mydataframe)
+
+foo <- ddply(poo5,.(subID,block,trialtype),summarise,avg.pupilSs=mean(PUPIL_CORRECTED,na.rm = TRUE)) 
+foo2<-foo[!(foo$trialtype==3 | foo$trialtype==4 | foo$trialtype==6),] 
+
+fit <- aov(avg.pupilSs~(trialtype*block)+Error(subID/(trialtype*block)),
+  	data=foo2)
+summary(fit)
+
+#main effect of trial type p = 0.0579
+#no effect of block p = 0.4765
+#no interaction p = 0.8447
+
+######### Correlation #########
+foo3 <- ddply(foo2,.(block,trialtype),summarise,avg.pupil=mean(avg.pupilSs,na.rm = TRUE),sePupil=sd(avg.pupilSs, na.rm = TRUE)/sqrt(length(avg.pupilSs)))
+a <- subset(foo3, trialtype==1) #high reward
+cor.test(a$block, a$avg.pupil, alternative = "two.sided", method = "pearson")
+#t = -0.63828, df = 3, p-value = 0.5687, r = -0.345
+b <- subset(foo3, trialtype==2) #mod reward
+cor.test(b$block, b$avg.pupil, alternative = "two.sided", method = "pearson")
+#t = 2.9963, df = 3, p-value = 0.05784, r = 0.865 *
+c <- subset(foo3, trialtype==5) #low reward
+cor.test(c$block, c$avg.pupil, alternative = "two.sided", method = "pearson")
+#t = -2.628, df = 3, p-value = 0.07846, r = -0.835 *
+```
+
+trial types: trialtype (1=A1V1, 2=A2V2, 3=A2--, 4=--V2, 5=A3--, 6=--V3)
+timecourse plot
+X: time
+Y: pupil change
+facet wrap early vs late block (1 vs 5)
+```{r}
+poo5 <- subset(poo4, TIMECODE > 999 & TIMECODE < 3001)
+poo5$block <- 1 #12
+poo5$block[poo5$timesseen > 3 & poo5$timesseen < 7] <- 2 #4 5 6
+poo5$block[poo5$timesseen > 6 & poo5$timesseen < 10] <- 3 #7 8 9
+poo5$block[poo5$timesseen > 9 & poo5$timesseen < 13] <- 4 #10 11 12
+poo5$block[poo5$timesseen > 12] <- 5 #13 14 15
+
+poo6 <- subset(poo5, block==1 | block==5) #only comparing block 1 and 5
+doo <- ddply(poo6,.(subID,TIMECODE,block,trialtype),summarise,avg.pupilSs=mean(PUPIL_CORRECTED,na.rm = TRUE)) 
+doo2 <- ddply(doo,.(TIMECODE,block,trialtype),summarise,avg.pupil=mean(avg.pupilSs,na.rm = TRUE),sePupil=sd(avg.pupilSs, na.rm = TRUE)/sqrt(length(avg.pupilSs)))
+
+#only care about A1V1, A2V2, A3-- or 1,2,5
+doo3<-doo2[!(doo2$trialtype==3 | doo2$trialtype==4 | doo2$trialtype==6),]
+doo3$label <- doo3$trialtype
+doo3$label[doo3$trialtype==5] <- 1 #trialtype5 = A3--
+doo3$label[doo3$trialtype==1] <- 3 #trialtype1 = A1V1
+
+#facet wrap
+label <- c(`1` = "First block",`5` = "Last block")
+ggplot(doo3,aes(x=TIMECODE,y=avg.pupil,fill=factor(label),colour=factor(label)))+
+  geom_line()+
+  ggtitle("Pupil change")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  labs(x = "Time (ms)", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  facet_wrap(~block,nrow = 1,labeller = as_labeller(label))+
+  theme(strip.text = element_text(size=16))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_color_manual(values=c("#2a92ff", "#ff15ff", "#559455"),name="Trial type",breaks=c("1", "2","3"),labels=c("Low uncertainty, low reward", "High uncertainty, moderate reward","Low uncertainty, high reward"))+
+  scale_y_continuous(labels=percent,limits=c(-0.1,.15),breaks=seq(-0.1,.15,0.05))+
+  theme(legend.position = "bottom")
+  
+doo4 <- subset(doo3, label > 1)
+ggplot(doo4,aes(x=TIMECODE,y=avg.pupil,fill=factor(label),colour=factor(label)))+
+  geom_line()+
+  ggtitle("Pupil change")+
+  theme_bw()+
+  theme(panel.grid.major = element_blank(),panel.grid.minor = element_blank(),axis.line = element_line(colour = "black"))+
+  labs(x = "Time (ms)", y = "Pupil change from baseline (%)")+
+  theme(plot.title = element_text(face="bold", size=14, hjust=0))+
+  theme(axis.title = element_text(face="bold", size=14))+ 
+  theme(axis.text.x  = element_text(size=14),axis.text.y  = element_text(size=14))+
+  theme(legend.text=element_text(size=14),legend.title=element_text(size=14))+
+  facet_wrap(~block,nrow = 1,labeller = as_labeller(label))+
+  theme(strip.text = element_text(size=16))+
+  theme(plot.title = element_text(hjust = 0.5))+
+  scale_color_manual(values=c("#ff15ff", "#559455"),name="Trial type",breaks=c("2","3"),labels=c("High uncertainty, moderate reward","Low uncertainty, high reward"))+
+  scale_y_continuous(labels=percent,limits=c(-0.1,.15),breaks=seq(-0.1,.15,0.05))+
+  theme(legend.position = "bottom")
+```
+
